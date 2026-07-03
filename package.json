@@ -13,17 +13,16 @@
     "README.md"
   ],
   "scripts": {
-    "build": "esbuild src/runtime.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist/index.js",
+    "build": "esbuild src/runtime.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/index.js",
     "check": "node --check src/runtime.ts",
     "smoke": "node src/runtime.ts --local-review-server",
     "test": "node --test tests/*.test.ts"
   },
-  "devDependencies": {
-    "@opencode-ai/plugin": "1.14.30",
-    "esbuild": "^0.27.0"
+  "dependencies": {
+    "@opencode-ai/plugin": "1.14.30"
   },
-  "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.0.0"
+  "devDependencies": {
+    "esbuild": "^0.27.0"
   },
   "repository": {
     "type": "git",
