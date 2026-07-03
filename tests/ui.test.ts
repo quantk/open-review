@@ -18,3 +18,9 @@ test("renderAppHTML includes Go syntax highlighting rules", () => {
   assert.match(html, /'string'/);
   assert.match(html, /tok-keyword/);
 });
+
+test("renderAppHTML preserves highlighter regular expressions", () => {
+  const html = renderAppHTML("token-test");
+  assert.ok(html.includes("const number = /^\\d+(?:\\.\\d+)?/.exec(rest);"));
+  assert.ok(html.includes("const ident = /^[A-Za-z_$][\\w$]*/.exec(rest);"));
+});

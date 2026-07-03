@@ -173,13 +173,13 @@ export function renderAppHTML(serverToken) {
           i = j;
           continue;
         }
-        const number = /^\d+(?:\.\d+)?/.exec(rest);
+        const number = /^\\d+(?:\\.\\d+)?/.exec(rest);
         if (number) {
           out += '<span class="tok-number">'+esc(number[0])+'</span>';
           i += number[0].length;
           continue;
         }
-        const ident = /^[A-Za-z_$][\w$]*/.exec(rest);
+        const ident = /^[A-Za-z_$][\\w$]*/.exec(rest);
         if (ident) {
           const word = ident[0];
           if (keywords.has(word)) out += '<span class="tok-keyword">'+esc(word)+'</span>';
