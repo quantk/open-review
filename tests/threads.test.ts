@@ -72,3 +72,19 @@ test("agent can create review thread", () => {
   assert.equal(thread.messages[0].opencodeSessionID, "ses_test");
   assert.equal(state.events[0].actorType, "agent");
 });
+
+test("thread creation rejects lines outside the diff", () => {
+  const state = makeState();
+
+  assert.throws(
+    () =>
+      createThread(state, {
+        patchsetID: "ps_test",
+        filePath: "main.go",
+        side: "new",
+        line: 99,
+        message: "not anchored",
+      }),
+    /thread line is not present/
+  );
+});

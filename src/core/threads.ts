@@ -13,6 +13,8 @@ export function createThread(state, body) {
   const actorType = body.actorType === "agent" ? "agent" : "human";
   const startLine = nullableNumber(body.startLine ?? body.line);
   const endLine = nullableNumber(body.endLine ?? body.startLine ?? body.line);
+  if (!Number.isInteger(startLine) || startLine < 1 || !Number.isInteger(endLine) || endLine < startLine) throw httpError(400, "invalid thread line range");
+  if (!findLine(diff, filePath, side, startLine) || !findLine(diff, filePath, side, endLine)) throw httpError(400, "thread line is not present in the selected diff");
   const selectedText = Array.isArray(body.selectedText) && body.selectedText.length ? body.selectedText : selectedTextFromDiff(diff, filePath, side, startLine, endLine);
   const anchor = {
     kind: startLine === endLine ? "line" : "range",

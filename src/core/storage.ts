@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { hashText, httpError } from "../utils.ts";
 
+const writeQueues = new Map();
+
 export async function loadState(storagePath, project) {
   const existing = await readJSON(storagePath, null);
   if (existing?.version === 1) return existing;
@@ -23,7 +25,7 @@ export async function loadState(storagePath, project) {
 
 export async function saveState(storagePath, state) {
   state.updatedAt = new Date().toISOString();
-  await writeJSON(storagePath, state, { mode: 0o600 });
+  await enqueueWrite(storagePath, () => writeJSON(storagePath, state, { mode: 0o600 }));
 }
 
 export async function readJSON(file, fallback) {
@@ -36,9 +38,22 @@ export async function readJSON(file, fallback) {
 
 export async function writeJSON(file, value, options = {}) {
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.tmp`;
+  const tmp = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(value, null, 2), { mode: options.mode || 0o600 });
   await fs.rename(tmp, file);
+}
+
+function enqueueWrite(file, write) {
+  const key = path.resolve(file);
+  const previous = writeQueues.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(write);
+  writeQueues.set(
+    key,
+    current.finally(() => {
+      if (writeQueues.get(key) === current) writeQueues.delete(key);
+    })
+  );
+  return current;
 }
 
 export async function ensureReviewDir(worktree) {

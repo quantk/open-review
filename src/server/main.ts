@@ -32,7 +32,9 @@ export async function runSidecar() {
     const address = server.address();
     currentPort = typeof address === "object" && address ? address.port : 0;
     const url = `http://${host}:${currentPort}`;
-    await refreshDiff({ state, storagePath, worktree, projectID, scope: "working_tree", sseClients });
     console.log(`READY ${JSON.stringify({ url, projectID, worktree })}`);
+    refreshDiff({ state, storagePath, worktree, projectID, scope: "working_tree", sseClients }).catch((error) => {
+      console.error(`[opencode-local-review] initial diff refresh failed: ${error.message || String(error)}`);
+    });
   });
 }

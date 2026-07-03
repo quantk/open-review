@@ -7,12 +7,21 @@ import { agentGetThread, agentListThreads, createThread, listThreads, mutateThre
 import { renderAppHTML, renderHealthHTML } from "../ui/html.ts";
 import { hashText, httpError, parseCookie, statusFromError } from "../utils.ts";
 
+const MAX_BODY_BYTES = 1024 * 1024;
+
 export async function handleRequest(ctx) {
   const { req, res, token } = ctx;
   const url = new URL(req.url || "/", `http://127.0.0.1:${ctx.getPort() || 0}`);
 
   if (url.pathname === "/" || url.pathname === "/review" || url.pathname.startsWith("/review/thread/") || url.pathname === "/settings") {
-    sendHTML(res, renderAppHTML(token));
+    const queryToken = url.searchParams.get("token");
+    if (queryToken === token) {
+      url.searchParams.delete("token");
+      sendRedirectWithAuthCookie(res, url.pathname + url.search, token);
+      return;
+    }
+    assertAuthorized(req, url, token, ctx.getPort());
+    sendHTML(res, renderAppHTML());
     return;
   }
   if (url.pathname === "/health") {
@@ -178,9 +187,28 @@ export function emitSSE(clients, event) {
 
 async function readBody(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES) throw httpError(413, "request body too large");
+    chunks.push(chunk);
+  }
   const text = Buffer.concat(chunks).toString("utf8");
-  return text ? JSON.parse(text) : {};
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw httpError(400, "malformed JSON body");
+  }
+}
+
+function sendRedirectWithAuthCookie(res, location, token) {
+  res.writeHead(303, {
+    location,
+    "set-cookie": `review_token=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`,
+    "cache-control": "no-store",
+  });
+  res.end();
 }
 
 function matchThreadAction(pathname) {

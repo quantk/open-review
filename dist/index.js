@@ -12598,6 +12598,7 @@ function isExcluded(filePath) {
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+var writeQueues = /* @__PURE__ */ new Map();
 async function loadState(storagePath, project) {
   const existing = await readJSON(storagePath, null);
   if (existing?.version === 1) return existing;
@@ -12617,7 +12618,7 @@ async function loadState(storagePath, project) {
 }
 async function saveState(storagePath, state) {
   state.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  await writeJSON(storagePath, state, { mode: 384 });
+  await enqueueWrite(storagePath, () => writeJSON(storagePath, state, { mode: 384 }));
 }
 async function readJSON(file2, fallback) {
   try {
@@ -12628,9 +12629,22 @@ async function readJSON(file2, fallback) {
 }
 async function writeJSON(file2, value, options = {}) {
   await fs.mkdir(path.dirname(file2), { recursive: true, mode: 448 });
-  const tmp = `${file2}.${process.pid}.tmp`;
+  const tmp = `${file2}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(value, null, 2), { mode: options.mode || 384 });
   await fs.rename(tmp, file2);
+}
+function enqueueWrite(file2, write) {
+  const key = path.resolve(file2);
+  const previous = writeQueues.get(key) || Promise.resolve();
+  const current = previous.catch(() => {
+  }).then(write);
+  writeQueues.set(
+    key,
+    current.finally(() => {
+      if (writeQueues.get(key) === current) writeQueues.delete(key);
+    })
+  );
+  return current;
 }
 async function ensureReviewDir(worktree) {
   const local = path.join(worktree, ".opencode", "review");
@@ -12737,6 +12751,8 @@ function createThread(state, body) {
   const actorType = body.actorType === "agent" ? "agent" : "human";
   const startLine = nullableNumber(body.startLine ?? body.line);
   const endLine = nullableNumber(body.endLine ?? body.startLine ?? body.line);
+  if (!Number.isInteger(startLine) || startLine < 1 || !Number.isInteger(endLine) || endLine < startLine) throw httpError(400, "invalid thread line range");
+  if (!findLine(diff, filePath, side, startLine) || !findLine(diff, filePath, side, endLine)) throw httpError(400, "thread line is not present in the selected diff");
   const selectedText = Array.isArray(body.selectedText) && body.selectedText.length ? body.selectedText : selectedTextFromDiff(diff, filePath, side, startLine, endLine);
   const anchor = {
     kind: startLine === endLine ? "line" : "range",
@@ -12995,7 +13011,7 @@ function findHunkHeader(diff, filePath, side, lineNumber) {
 }
 
 // src/ui/html.ts
-function renderAppHTML(serverToken) {
+function renderAppHTML() {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -13073,14 +13089,10 @@ function renderAppHTML(serverToken) {
   <header><div><strong>OpenCode Local Review</strong> <span id="summary" class="meta"></span></div><div><label class="meta"><input id="show-resolved" type="checkbox"> Show resolved</label> <button id="refresh">Refresh diff</button></div></header>
   <div class="layout"><aside><h3>Files</h3><div id="files"></div></aside><main id="diff"></main><aside><h3>Threads</h3><div id="threads"></div></aside></div>
   <script>
-    const initialToken = ${JSON.stringify(serverToken)};
-    const params = new URLSearchParams(location.search);
-    const token = params.get('token') || localStorage.localReviewToken || initialToken;
-    localStorage.localReviewToken = token;
     let currentDiff = null, currentFile = null, pending = null, replyingThreadID = null;
     let showResolved = localStorage.localReviewShowResolved === '1';
     const api = async (path, options={}) => {
-      const res = await fetch(path, { ...options, headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json', ...(options.headers||{}) }, body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body });
+      const res = await fetch(path, { ...options, headers: { 'content-type': 'application/json', ...(options.headers||{}) }, body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
       return data;
@@ -13258,7 +13270,7 @@ function renderAppHTML(serverToken) {
     document.getElementById('show-resolved').checked = showResolved;
     document.getElementById('show-resolved').onchange = (event) => { showResolved = event.target.checked; localStorage.localReviewShowResolved = showResolved ? '1' : '0'; renderDiff(); renderThreads(); };
     document.getElementById('refresh').onclick = async () => { await api('/api/diff/refresh',{method:'POST',body:{scope:'working_tree'}}); await load(); };
-    try { const es = new EventSource('/api/events?token=' + encodeURIComponent(token)); es.onmessage = () => load(); es.addEventListener('diff.changed', load); es.addEventListener('thread.updated', load); es.addEventListener('thread.created', load); } catch {}
+    try { const es = new EventSource('/api/events'); es.onmessage = () => load(); es.addEventListener('diff.changed', load); es.addEventListener('thread.updated', load); es.addEventListener('thread.created', load); } catch {}
     function prefix(type) { return type === 'add' ? '+' : type === 'del' ? '-' : ' '; }
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
     function domID(value) { return String(value ?? '').replace(/[^A-Za-z0-9_-]/g, '_'); }
@@ -13274,11 +13286,19 @@ function renderHealthHTML(ctx) {
 }
 
 // src/server/http.ts
+var MAX_BODY_BYTES = 1024 * 1024;
 async function handleRequest(ctx) {
   const { req, res, token } = ctx;
   const url2 = new URL(req.url || "/", `http://127.0.0.1:${ctx.getPort() || 0}`);
   if (url2.pathname === "/" || url2.pathname === "/review" || url2.pathname.startsWith("/review/thread/") || url2.pathname === "/settings") {
-    sendHTML(res, renderAppHTML(token));
+    const queryToken = url2.searchParams.get("token");
+    if (queryToken === token) {
+      url2.searchParams.delete("token");
+      sendRedirectWithAuthCookie(res, url2.pathname + url2.search, token);
+      return;
+    }
+    assertAuthorized(req, url2, token, ctx.getPort());
+    sendHTML(res, renderAppHTML());
     return;
   }
   if (url2.pathname === "/health") {
@@ -13432,9 +13452,27 @@ data: ${JSON.stringify(event)}
 }
 async function readBody(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES) throw httpError(413, "request body too large");
+    chunks.push(chunk);
+  }
   const text = Buffer.concat(chunks).toString("utf8");
-  return text ? JSON.parse(text) : {};
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw httpError(400, "malformed JSON body");
+  }
+}
+function sendRedirectWithAuthCookie(res, location, token) {
+  res.writeHead(303, {
+    location,
+    "set-cookie": `review_token=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`,
+    "cache-control": "no-store"
+  });
+  res.end();
 }
 function matchThreadAction(pathname) {
   const match = /^\/api\/threads\/([^/]+)\/(messages|addressed|resolve|reopen)$/.exec(pathname);
@@ -13517,6 +13555,7 @@ async function ensureServer(input) {
     await fs3.appendFile(logPath, `[${(/* @__PURE__ */ new Date()).toISOString()}] failed: ${error45.message || String(error45)}
 `).catch(() => {
     });
+    stopChild(child);
     throw error45;
   }
   const record2 = { url: ready.url, token, pid: child.pid, worktree: input.worktree, startedAt: (/* @__PURE__ */ new Date()).toISOString() };
@@ -13534,12 +13573,22 @@ async function stopServer(input) {
   const existing = await readJSON(lockPath, null);
   if (existing?.pid) {
     try {
-      process.kill(existing.pid, "SIGTERM");
+      const health = existing?.url && existing?.token ? await callJSON(existing, "/api/health", { method: "GET" }) : null;
+      if (health?.ok && health?.worktree === input.worktree) process.kill(existing.pid, "SIGTERM");
     } catch {
     }
   }
   await fs3.rm(lockPath, { force: true }).catch(() => {
   });
+}
+function stopChild(child) {
+  try {
+    child.kill("SIGTERM");
+    setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }, 1e3).unref?.();
+  } catch {
+  }
 }
 function sidecarRuntime() {
   const override = process.env.OPENCODE_LOCAL_REVIEW_NODE;
@@ -13565,7 +13614,7 @@ function waitForReady(child) {
       clearTimeout(timer);
       fn(value);
     };
-    const timer = setTimeout(() => finish(reject, new Error("local review server did not start within 2s")), 2e3);
+    const timer = setTimeout(() => finish(reject, new Error("local review server did not start within 10s")), 1e4);
     child.on("error", (error45) => finish(reject, error45));
     child.on("exit", (code) => {
       finish(reject, new Error(`local review server exited before ready: ${code}`));
@@ -13824,8 +13873,10 @@ async function runSidecar() {
     const address = server2.address();
     currentPort = typeof address === "object" && address ? address.port : 0;
     const url2 = `http://${host}:${currentPort}`;
-    await refreshDiff({ state, storagePath, worktree, projectID, scope: "working_tree", sseClients });
     console.log(`READY ${JSON.stringify({ url: url2, projectID, worktree })}`);
+    refreshDiff({ state, storagePath, worktree, projectID, scope: "working_tree", sseClients }).catch((error45) => {
+      console.error(`[opencode-local-review] initial diff refresh failed: ${error45.message || String(error45)}`);
+    });
   });
 }
 

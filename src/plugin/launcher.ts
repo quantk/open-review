@@ -65,6 +65,7 @@ export async function ensureServer(input) {
     ready = await waitForReady(child);
   } catch (error) {
     await fs.appendFile(logPath, `[${new Date().toISOString()}] failed: ${error.message || String(error)}\n`).catch(() => {});
+    stopChild(child);
     throw error;
   }
   const record = { url: ready.url, token, pid: child.pid, worktree: input.worktree, startedAt: new Date().toISOString() };
@@ -85,10 +86,20 @@ export async function stopServer(input) {
   const existing = await readJSON(lockPath, null);
   if (existing?.pid) {
     try {
-      process.kill(existing.pid, "SIGTERM");
+      const health = existing?.url && existing?.token ? await callJSON(existing, "/api/health", { method: "GET" }) : null;
+      if (health?.ok && health?.worktree === input.worktree) process.kill(existing.pid, "SIGTERM");
     } catch {}
   }
   await fs.rm(lockPath, { force: true }).catch(() => {});
+}
+
+function stopChild(child) {
+  try {
+    child.kill("SIGTERM");
+    setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }, 1000).unref?.();
+  } catch {}
 }
 
 function sidecarRuntime() {
@@ -117,7 +128,7 @@ function waitForReady(child) {
       clearTimeout(timer);
       fn(value);
     };
-    const timer = setTimeout(() => finish(reject, new Error("local review server did not start within 2s")), 2000);
+    const timer = setTimeout(() => finish(reject, new Error("local review server did not start within 10s")), 10000);
     child.on("error", (error) => finish(reject, error));
     child.on("exit", (code) => {
       finish(reject, new Error(`local review server exited before ready: ${code}`));
