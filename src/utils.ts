@@ -22,16 +22,6 @@ export function redactSecrets(line: unknown): string {
   return String(line).replace(/(api[_-]?key|token|secret|password)(\s*[:=]\s*)["']?[^"'\s]+/gi, "$1$2[REDACTED]");
 }
 
-export function parseCookie(cookie: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const part of cookie.split(";")) {
-    const index = part.indexOf("=");
-    if (index === -1) continue;
-    result[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
-  }
-  return result;
-}
-
 export function escapeHTML(value: unknown): string {
   return String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch);
 }

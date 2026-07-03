@@ -79,10 +79,18 @@ export function renderAppHTML() {
   <header><div><strong>OpenCode Local Review</strong> <span id="summary" class="meta"></span></div><div><label class="meta"><input id="show-resolved" type="checkbox"> Show resolved</label> <button id="refresh">Refresh diff</button></div></header>
   <div class="layout"><aside><h3>Files</h3><div id="files"></div></aside><main id="diff"></main><aside><h3>Threads</h3><div id="threads"></div></aside></div>
   <script>
+    const params = new URLSearchParams(location.search);
+    const queryToken = params.get('token');
+    if (queryToken) {
+      localStorage.localReviewToken = queryToken;
+      params.delete('token');
+      history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params.toString() : '') + location.hash);
+    }
+    const token = localStorage.localReviewToken || '';
     let currentDiff = null, currentFile = null, pending = null, replyingThreadID = null;
     let showResolved = localStorage.localReviewShowResolved === '1';
     const api = async (path, options={}) => {
-      const res = await fetch(path, { ...options, headers: { 'content-type': 'application/json', ...(options.headers||{}) }, body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body });
+      const res = await fetch(path, { ...options, headers: { ...(token ? { authorization: 'Bearer ' + token } : {}), 'content-type': 'application/json', ...(options.headers||{}) }, body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
       return data;
@@ -260,7 +268,7 @@ export function renderAppHTML() {
     document.getElementById('show-resolved').checked = showResolved;
     document.getElementById('show-resolved').onchange = (event) => { showResolved = event.target.checked; localStorage.localReviewShowResolved = showResolved ? '1' : '0'; renderDiff(); renderThreads(); };
     document.getElementById('refresh').onclick = async () => { await api('/api/diff/refresh',{method:'POST',body:{scope:'working_tree'}}); await load(); };
-    try { const es = new EventSource('/api/events'); es.onmessage = () => load(); es.addEventListener('diff.changed', load); es.addEventListener('thread.updated', load); es.addEventListener('thread.created', load); } catch {}
+    try { if (token) { const es = new EventSource('/api/events?token=' + encodeURIComponent(token)); es.onmessage = () => load(); es.addEventListener('diff.changed', load); es.addEventListener('thread.updated', load); es.addEventListener('thread.created', load); } } catch {}
     function prefix(type) { return type === 'add' ? '+' : type === 'del' ? '-' : ' '; }
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
     function domID(value) { return String(value ?? '').replace(/[^A-Za-z0-9_-]/g, '_'); }

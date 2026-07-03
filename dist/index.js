@@ -12481,15 +12481,6 @@ function nullableNumber(value) {
 function redactSecrets(line) {
   return String(line).replace(/(api[_-]?key|token|secret|password)(\s*[:=]\s*)["']?[^"'\s]+/gi, "$1$2[REDACTED]");
 }
-function parseCookie(cookie) {
-  const result = {};
-  for (const part of cookie.split(";")) {
-    const index = part.indexOf("=");
-    if (index === -1) continue;
-    result[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
-  }
-  return result;
-}
 function escapeHTML(value) {
   return String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch);
 }
@@ -13089,10 +13080,18 @@ function renderAppHTML() {
   <header><div><strong>OpenCode Local Review</strong> <span id="summary" class="meta"></span></div><div><label class="meta"><input id="show-resolved" type="checkbox"> Show resolved</label> <button id="refresh">Refresh diff</button></div></header>
   <div class="layout"><aside><h3>Files</h3><div id="files"></div></aside><main id="diff"></main><aside><h3>Threads</h3><div id="threads"></div></aside></div>
   <script>
+    const params = new URLSearchParams(location.search);
+    const queryToken = params.get('token');
+    if (queryToken) {
+      localStorage.localReviewToken = queryToken;
+      params.delete('token');
+      history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params.toString() : '') + location.hash);
+    }
+    const token = localStorage.localReviewToken || '';
     let currentDiff = null, currentFile = null, pending = null, replyingThreadID = null;
     let showResolved = localStorage.localReviewShowResolved === '1';
     const api = async (path, options={}) => {
-      const res = await fetch(path, { ...options, headers: { 'content-type': 'application/json', ...(options.headers||{}) }, body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body });
+      const res = await fetch(path, { ...options, headers: { ...(token ? { authorization: 'Bearer ' + token } : {}), 'content-type': 'application/json', ...(options.headers||{}) }, body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
       return data;
@@ -13270,7 +13269,7 @@ function renderAppHTML() {
     document.getElementById('show-resolved').checked = showResolved;
     document.getElementById('show-resolved').onchange = (event) => { showResolved = event.target.checked; localStorage.localReviewShowResolved = showResolved ? '1' : '0'; renderDiff(); renderThreads(); };
     document.getElementById('refresh').onclick = async () => { await api('/api/diff/refresh',{method:'POST',body:{scope:'working_tree'}}); await load(); };
-    try { const es = new EventSource('/api/events'); es.onmessage = () => load(); es.addEventListener('diff.changed', load); es.addEventListener('thread.updated', load); es.addEventListener('thread.created', load); } catch {}
+    try { if (token) { const es = new EventSource('/api/events?token=' + encodeURIComponent(token)); es.onmessage = () => load(); es.addEventListener('diff.changed', load); es.addEventListener('thread.updated', load); es.addEventListener('thread.created', load); } } catch {}
     function prefix(type) { return type === 'add' ? '+' : type === 'del' ? '-' : ' '; }
     function esc(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
     function domID(value) { return String(value ?? '').replace(/[^A-Za-z0-9_-]/g, '_'); }
@@ -13291,13 +13290,6 @@ async function handleRequest(ctx) {
   const { req, res, token } = ctx;
   const url2 = new URL(req.url || "/", `http://127.0.0.1:${ctx.getPort() || 0}`);
   if (url2.pathname === "/" || url2.pathname === "/review" || url2.pathname.startsWith("/review/thread/") || url2.pathname === "/settings") {
-    const queryToken = url2.searchParams.get("token");
-    if (queryToken === token) {
-      url2.searchParams.delete("token");
-      sendRedirectWithAuthCookie(res, url2.pathname + url2.search, token);
-      return;
-    }
-    assertAuthorized(req, url2, token, ctx.getPort());
     sendHTML(res, renderAppHTML());
     return;
   }
@@ -13427,9 +13419,8 @@ function assertAuthorized(req, url2, token, port) {
   const origin = req.headers.origin;
   if (origin && ![`http://127.0.0.1:${port}`, `http://localhost:${port}`].includes(origin)) throw httpError(403, "invalid origin");
   const auth = req.headers.authorization || "";
-  const cookieToken = parseCookie(req.headers.cookie || "")[reviewCookieName(token)];
   const queryToken = url2.searchParams.get("token");
-  if (auth === `Bearer ${token}` || cookieToken === token || queryToken === token) return;
+  if (auth === `Bearer ${token}` || queryToken === token) return;
   throw httpError(401, "unauthorized");
 }
 function sendJSON(res, status, body) {
@@ -13466,17 +13457,6 @@ async function readBody(req) {
   } catch {
     throw httpError(400, "malformed JSON body");
   }
-}
-function sendRedirectWithAuthCookie(res, location, token) {
-  res.writeHead(303, {
-    location,
-    "set-cookie": `${reviewCookieName(token)}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`,
-    "cache-control": "no-store"
-  });
-  res.end();
-}
-function reviewCookieName(token) {
-  return `review_token_${hashText(token).slice(0, 16)}`;
 }
 function matchThreadAction(pathname) {
   const match = /^\/api\/threads\/([^/]+)\/(messages|addressed|resolve|reopen)$/.exec(pathname);

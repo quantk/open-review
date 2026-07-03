@@ -5,7 +5,7 @@ import { buildRawDiff, gitMaybe } from "../core/git.ts";
 import { saveState } from "../core/storage.ts";
 import { agentGetThread, agentListThreads, createThread, listThreads, mutateThread, reanchorThreads } from "../core/threads.ts";
 import { renderAppHTML, renderHealthHTML } from "../ui/html.ts";
-import { hashText, httpError, parseCookie, statusFromError } from "../utils.ts";
+import { hashText, httpError, statusFromError } from "../utils.ts";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -14,13 +14,6 @@ export async function handleRequest(ctx) {
   const url = new URL(req.url || "/", `http://127.0.0.1:${ctx.getPort() || 0}`);
 
   if (url.pathname === "/" || url.pathname === "/review" || url.pathname.startsWith("/review/thread/") || url.pathname === "/settings") {
-    const queryToken = url.searchParams.get("token");
-    if (queryToken === token) {
-      url.searchParams.delete("token");
-      sendRedirectWithAuthCookie(res, url.pathname + url.search, token);
-      return;
-    }
-    assertAuthorized(req, url, token, ctx.getPort());
     sendHTML(res, renderAppHTML());
     return;
   }
@@ -160,9 +153,8 @@ function assertAuthorized(req, url, token, port) {
   const origin = req.headers.origin;
   if (origin && ![`http://127.0.0.1:${port}`, `http://localhost:${port}`].includes(origin)) throw httpError(403, "invalid origin");
   const auth = req.headers.authorization || "";
-  const cookieToken = parseCookie(req.headers.cookie || "")[reviewCookieName(token)];
   const queryToken = url.searchParams.get("token");
-  if (auth === `Bearer ${token}` || cookieToken === token || queryToken === token) return;
+  if (auth === `Bearer ${token}` || queryToken === token) return;
   throw httpError(401, "unauthorized");
 }
 
@@ -201,19 +193,6 @@ async function readBody(req) {
   } catch {
     throw httpError(400, "malformed JSON body");
   }
-}
-
-function sendRedirectWithAuthCookie(res, location, token) {
-  res.writeHead(303, {
-    location,
-    "set-cookie": `${reviewCookieName(token)}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`,
-    "cache-control": "no-store",
-  });
-  res.end();
-}
-
-function reviewCookieName(token) {
-  return `review_token_${hashText(token).slice(0, 16)}`;
 }
 
 function matchThreadAction(pathname) {

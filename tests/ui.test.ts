@@ -28,5 +28,6 @@ test("renderAppHTML preserves highlighter regular expressions", () => {
 test("renderAppHTML does not embed bootstrap tokens", () => {
   const html = renderAppHTML();
   assert.equal(html.includes("token-test"), false);
-  assert.equal(html.includes("authorization: 'Bearer"), false);
+  assert.equal(html.includes("set-cookie"), false);
+  assert.equal(html.includes("review_token"), false);
 });
