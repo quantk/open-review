@@ -1373,7 +1373,7 @@ if (process.argv.includes("--local-review-server")) {
   });
 }
 var server = LocalReviewPlugin;
-var runtime_default = LocalReviewPlugin;
+var runtime_default = { server: LocalReviewPlugin };
 export {
   LocalReviewPlugin,
   LocalReviewPlugin as OpenReviewPlugin,
