@@ -1,1 +1,1 @@
-export { default, LocalReviewPlugin } from "./dist/index.js";
+export { default, LocalReviewPlugin, OpenReviewPlugin, server } from "./dist/index.js";

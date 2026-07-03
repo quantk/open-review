@@ -960,11 +960,11 @@ async function refreshDiff({ state, storagePath, worktree, projectID, scope, sse
   for (const id of reanchor.staleIDs) emitSSE(sseClients, { type: "thread.stale", threadID: id });
   return { changed: true, diff, reanchoredThreads: reanchor.reanchoredIDs.length, staleThreads: reanchor.staleIDs.length };
 }
-async function callJSON(server, route, options) {
-  const response = await fetch(`${server.url}${route}`, {
+async function callJSON(server2, route, options) {
+  const response = await fetch(`${server2.url}${route}`, {
     method: options.method,
     headers: {
-      authorization: `Bearer ${server.token}`,
+      authorization: `Bearer ${server2.token}`,
       "content-type": "application/json"
     },
     body: options.body === void 0 ? void 0 : JSON.stringify(options.body)
@@ -1158,7 +1158,7 @@ function waitForReady(child) {
 var LocalReviewPlugin = async (ctx) => {
   fireAndForgetLog(ctx, "Local review plugin initialized; registering review_start, review_restart, review_stop, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed tools.");
   let serverInput = null;
-  let server = { unavailable: true, error: "Local review server is not running. Use /review-start to start it." };
+  let server2 = { unavailable: true, error: "Local review server is not running. Use /review-start to start it." };
   const resolveServerInput = async (context) => {
     if (serverInput) return serverInput;
     const rootCandidate = context?.worktree || ctx.worktree || context?.directory || ctx.directory;
@@ -1174,18 +1174,18 @@ var LocalReviewPlugin = async (ctx) => {
     return serverInput;
   };
   const startReviewServer = async (context) => {
-    server = await ensureServer(await resolveServerInput(context));
-    fireAndForgetLog(ctx, `Local review UI: ${server.reviewUrl}`);
-    return server;
+    server2 = await ensureServer(await resolveServerInput(context));
+    fireAndForgetLog(ctx, `Local review UI: ${server2.reviewUrl}`);
+    return server2;
   };
   const restartReviewServer = async (context) => {
-    server = await restartServer(await resolveServerInput(context));
-    fireAndForgetLog(ctx, `Local review UI restarted: ${server.reviewUrl}`);
-    return server;
+    server2 = await restartServer(await resolveServerInput(context));
+    fireAndForgetLog(ctx, `Local review UI restarted: ${server2.reviewUrl}`);
+    return server2;
   };
   const stopReviewServer = async (context) => {
     await stopServer(await resolveServerInput(context));
-    server = { unavailable: true, error: "Local review server is not running. Use /review-start to start it." };
+    server2 = { unavailable: true, error: "Local review server is not running. Use /review-start to start it." };
     fireAndForgetLog(ctx, "Local review UI stopped.");
     return { ok: true, message: "Local review UI stopped." };
   };
@@ -1193,7 +1193,7 @@ var LocalReviewPlugin = async (ctx) => {
   const scheduleRefresh = () => {
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => {
-      callJSON(server, "/api/diff/refresh", {
+      callJSON(server2, "/api/diff/refresh", {
         method: "POST",
         body: { scope: "working_tree" }
       }).catch(() => {
@@ -1239,8 +1239,8 @@ var LocalReviewPlugin = async (ctx) => {
           limit: tool.schema.number().int().min(1).max(50).optional()
         },
         async execute(args, context) {
-          assertServerAvailable(server);
-          const response = await callJSON(server, "/api/agent/threads", {
+          assertServerAvailable(server2);
+          const response = await callJSON(server2, "/api/agent/threads", {
             method: "POST",
             body: {
               sessionID: context.sessionID,
@@ -1258,8 +1258,8 @@ var LocalReviewPlugin = async (ctx) => {
           threadID: tool.schema.string()
         },
         async execute(args, context) {
-          assertServerAvailable(server);
-          const response = await callJSON(server, `/api/agent/threads/${encodeURIComponent(args.threadID)}`, {
+          assertServerAvailable(server2);
+          const response = await callJSON(server2, `/api/agent/threads/${encodeURIComponent(args.threadID)}`, {
             method: "POST",
             body: { sessionID: context.sessionID }
           });
@@ -1273,8 +1273,8 @@ var LocalReviewPlugin = async (ctx) => {
           message: tool.schema.string()
         },
         async execute(args, context) {
-          assertServerAvailable(server);
-          const response = await callJSON(server, `/api/agent/threads/${encodeURIComponent(args.threadID)}/reply`, {
+          assertServerAvailable(server2);
+          const response = await callJSON(server2, `/api/agent/threads/${encodeURIComponent(args.threadID)}/reply`, {
             method: "POST",
             body: { sessionID: context.sessionID, message: args.message }
           });
@@ -1289,8 +1289,8 @@ var LocalReviewPlugin = async (ctx) => {
           changedFiles: tool.schema.array(tool.schema.string()).optional()
         },
         async execute(args, context) {
-          assertServerAvailable(server);
-          const response = await callJSON(server, `/api/agent/threads/${encodeURIComponent(args.threadID)}/addressed`, {
+          assertServerAvailable(server2);
+          const response = await callJSON(server2, `/api/agent/threads/${encodeURIComponent(args.threadID)}/addressed`, {
             method: "POST",
             body: {
               sessionID: context.sessionID,
@@ -1305,7 +1305,7 @@ var LocalReviewPlugin = async (ctx) => {
     event: async ({ event }) => {
       const type = event?.type;
       if (type === "file.edited" || type === "file.watcher.updated" || type === "session.diff" || type === "session.idle" || type === "session.status") {
-        if (!server.unavailable) scheduleRefresh();
+        if (!server2.unavailable) scheduleRefresh();
       }
     }
   };
@@ -1314,8 +1314,8 @@ function fireAndForgetLog(ctx, message) {
   logInfo(ctx, message).catch(() => {
   });
 }
-function assertServerAvailable(server) {
-  if (server.unavailable) throw new Error(server.error);
+function assertServerAvailable(server2) {
+  if (server2.unavailable) throw new Error(server2.error);
 }
 async function logInfo(ctx, message) {
   try {
@@ -1349,15 +1349,15 @@ async function runSidecar() {
   const state = await loadState(storagePath, { projectID, projectName, worktree });
   const sseClients = /* @__PURE__ */ new Set();
   let currentPort = 0;
-  const server = http.createServer(async (req, res) => {
+  const server2 = http.createServer(async (req, res) => {
     try {
       await handleRequest({ req, res, projectID, projectName, worktree, token, storagePath, state, startedAt, sseClients, getPort: () => currentPort });
     } catch (error) {
       sendJSON(res, statusFromError(error), { error: error.message || String(error) });
     }
   });
-  server.listen(0, host, async () => {
-    const address = server.address();
+  server2.listen(0, host, async () => {
+    const address = server2.address();
     currentPort = typeof address === "object" && address ? address.port : 0;
     const url = `http://${host}:${currentPort}`;
     await refreshDiff({ state, storagePath, worktree, projectID, scope: "working_tree", sseClients });
@@ -1372,8 +1372,11 @@ if (process.argv.includes("--local-review-server")) {
     process.exit(1);
   });
 }
+var server = LocalReviewPlugin;
 var runtime_default = LocalReviewPlugin;
 export {
   LocalReviewPlugin,
-  runtime_default as default
+  LocalReviewPlugin as OpenReviewPlugin,
+  runtime_default as default,
+  server
 };
