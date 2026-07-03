@@ -6,7 +6,7 @@ import { hashText } from "../utils.ts";
 import { ensureServer, restartServer, stopServer } from "./launcher.ts";
 
 export const LocalReviewPlugin = async (ctx) => {
-  fireAndForgetLog(ctx, "Local review plugin initialized; registering review_start, review_restart, review_stop, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed tools.");
+  fireAndForgetLog(ctx, "Local review plugin initialized; registering review_start, review_restart, review_stop, review_create_thread, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed tools.");
 
   let serverInput = null;
   let server = { unavailable: true, error: "Local review server is not running. Use /review-start to start it." };
@@ -63,7 +63,7 @@ export const LocalReviewPlugin = async (ctx) => {
     },
     "experimental.chat.system.transform": async (_input, output) => {
       output.system.push(
-        "OpenReview plugin is loaded. Available OpenReview tool names should be: review_start, review_restart, review_stop, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed. If these tools are not callable, plugin tool registration is being filtered by opencode configuration or runtime."
+        "OpenReview plugin is loaded. Available OpenReview tool names should be: review_start, review_restart, review_stop, review_create_thread, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed. If these tools are not callable, plugin tool registration is being filtered by opencode configuration or runtime."
       );
     },
     tool: {
@@ -89,6 +89,38 @@ export const LocalReviewPlugin = async (ctx) => {
         async execute(_args, context) {
           const stopped = await stopReviewServer(context);
           return JSON.stringify(stopped, null, 2);
+        },
+      }),
+      review_create_thread: tool({
+        description:
+          "Create an inline local review thread as the agent reviewer. Use this when reviewing the current working-tree diff and you find an issue that should appear in the review UI. The thread is created open; humans resolve/reopen it.",
+        args: {
+          filePath: tool.schema.string(),
+          side: tool.schema.enum(["new", "old"]).optional(),
+          line: tool.schema.number().int().min(1),
+          message: tool.schema.string(),
+          startLine: tool.schema.number().int().min(1).optional(),
+          endLine: tool.schema.number().int().min(1).optional(),
+          selectedText: tool.schema.array(tool.schema.string()).optional(),
+        },
+        async execute(args, context) {
+          assertServerAvailable(server);
+          const response = await callJSON(server, "/api/threads", {
+            method: "POST",
+            body: {
+              sessionID: context.sessionID,
+              actorType: "agent",
+              authorName: "opencode",
+              filePath: args.filePath,
+              side: args.side || "new",
+              line: args.line,
+              startLine: args.startLine || args.line,
+              endLine: args.endLine || args.startLine || args.line,
+              selectedText: args.selectedText,
+              message: args.message,
+            },
+          });
+          return JSON.stringify(response, null, 2);
         },
       }),
       review_list_open_threads: tool({

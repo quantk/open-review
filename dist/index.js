@@ -12734,6 +12734,7 @@ function createThread(state, body) {
   if (!diff) throw httpError(400, "unknown patchsetID");
   const filePath = requireRelativePath(body.filePath);
   const side = body.side === "old" ? "old" : "new";
+  const actorType = body.actorType === "agent" ? "agent" : "human";
   const startLine = nullableNumber(body.startLine ?? body.line);
   const endLine = nullableNumber(body.endLine ?? body.startLine ?? body.line);
   const selectedText = Array.isArray(body.selectedText) && body.selectedText.length ? body.selectedText : selectedTextFromDiff(diff, filePath, side, startLine, endLine);
@@ -12766,15 +12767,15 @@ function createThread(state, body) {
     originalLine: startLine,
     currentLine: startLine,
     anchor,
-    createdBy: "human",
-    assignedTo: "agent",
+    createdBy: actorType,
+    assignedTo: actorType === "agent" ? "human" : "agent",
     opencodeSessionID: body.sessionID,
     createdAt: now,
     updatedAt: now
   };
   state.threads[thread.id] = thread;
-  addMessage(state, thread.id, { authorType: "human", authorName: body.authorName || "human", body: String(body.message || "") });
-  addEvent(state, thread.id, "created", "human", {});
+  addMessage(state, thread.id, { authorType: actorType, authorName: body.authorName || actorType, body: String(body.message || ""), opencodeSessionID: body.sessionID });
+  addEvent(state, thread.id, "created", actorType, {});
   return withMessages(state, thread);
 }
 function applyThreadMutation(state, threadID, action, body) {
@@ -13583,7 +13584,7 @@ function waitForReady(child) {
 
 // src/plugin/plugin.ts
 var LocalReviewPlugin = async (ctx) => {
-  fireAndForgetLog(ctx, "Local review plugin initialized; registering review_start, review_restart, review_stop, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed tools.");
+  fireAndForgetLog(ctx, "Local review plugin initialized; registering review_start, review_restart, review_stop, review_create_thread, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed tools.");
   let serverInput = null;
   let server2 = { unavailable: true, error: "Local review server is not running. Use /review-start to start it." };
   const resolveServerInput = async (context) => {
@@ -13635,7 +13636,7 @@ var LocalReviewPlugin = async (ctx) => {
     },
     "experimental.chat.system.transform": async (_input, output) => {
       output.system.push(
-        "OpenReview plugin is loaded. Available OpenReview tool names should be: review_start, review_restart, review_stop, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed. If these tools are not callable, plugin tool registration is being filtered by opencode configuration or runtime."
+        "OpenReview plugin is loaded. Available OpenReview tool names should be: review_start, review_restart, review_stop, review_create_thread, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed. If these tools are not callable, plugin tool registration is being filtered by opencode configuration or runtime."
       );
     },
     tool: {
@@ -13661,6 +13662,37 @@ var LocalReviewPlugin = async (ctx) => {
         async execute(_args, context) {
           const stopped = await stopReviewServer(context);
           return JSON.stringify(stopped, null, 2);
+        }
+      }),
+      review_create_thread: tool({
+        description: "Create an inline local review thread as the agent reviewer. Use this when reviewing the current working-tree diff and you find an issue that should appear in the review UI. The thread is created open; humans resolve/reopen it.",
+        args: {
+          filePath: tool.schema.string(),
+          side: tool.schema.enum(["new", "old"]).optional(),
+          line: tool.schema.number().int().min(1),
+          message: tool.schema.string(),
+          startLine: tool.schema.number().int().min(1).optional(),
+          endLine: tool.schema.number().int().min(1).optional(),
+          selectedText: tool.schema.array(tool.schema.string()).optional()
+        },
+        async execute(args, context) {
+          assertServerAvailable(server2);
+          const response = await callJSON(server2, "/api/threads", {
+            method: "POST",
+            body: {
+              sessionID: context.sessionID,
+              actorType: "agent",
+              authorName: "opencode",
+              filePath: args.filePath,
+              side: args.side || "new",
+              line: args.line,
+              startLine: args.startLine || args.line,
+              endLine: args.endLine || args.startLine || args.line,
+              selectedText: args.selectedText,
+              message: args.message
+            }
+          });
+          return JSON.stringify(response, null, 2);
         }
       }),
       review_list_open_threads: tool({

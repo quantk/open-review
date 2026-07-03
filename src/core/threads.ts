@@ -10,6 +10,7 @@ export function createThread(state, body) {
   if (!diff) throw httpError(400, "unknown patchsetID");
   const filePath = requireRelativePath(body.filePath);
   const side = body.side === "old" ? "old" : "new";
+  const actorType = body.actorType === "agent" ? "agent" : "human";
   const startLine = nullableNumber(body.startLine ?? body.line);
   const endLine = nullableNumber(body.endLine ?? body.startLine ?? body.line);
   const selectedText = Array.isArray(body.selectedText) && body.selectedText.length ? body.selectedText : selectedTextFromDiff(diff, filePath, side, startLine, endLine);
@@ -42,15 +43,15 @@ export function createThread(state, body) {
     originalLine: startLine,
     currentLine: startLine,
     anchor,
-    createdBy: "human",
-    assignedTo: "agent",
+    createdBy: actorType,
+    assignedTo: actorType === "agent" ? "human" : "agent",
     opencodeSessionID: body.sessionID,
     createdAt: now,
     updatedAt: now,
   };
   state.threads[thread.id] = thread;
-  addMessage(state, thread.id, { authorType: "human", authorName: body.authorName || "human", body: String(body.message || "") });
-  addEvent(state, thread.id, "created", "human", {});
+  addMessage(state, thread.id, { authorType: actorType, authorName: body.authorName || actorType, body: String(body.message || ""), opencodeSessionID: body.sessionID });
+  addEvent(state, thread.id, "created", actorType, {});
   return withMessages(state, thread);
 }
 

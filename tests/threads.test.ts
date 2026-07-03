@@ -48,3 +48,27 @@ test("human reply after addressed reopens thread", () => {
   assert.equal(state.threads[thread.id].status, "open");
   assert.equal(state.messages[thread.id].at(-1).body, "still missing error logs");
 });
+
+test("agent can create review thread", () => {
+  const state = makeState();
+  const thread = createThread(state, {
+    patchsetID: "ps_test",
+    filePath: "main.go",
+    side: "new",
+    line: 2,
+    message: "main should not be empty",
+    actorType: "agent",
+    authorName: "opencode",
+    selectedText: ["func main() {}"],
+    sessionID: "ses_test",
+  });
+
+  assert.equal(thread.status, "open");
+  assert.equal(thread.createdBy, "agent");
+  assert.equal(thread.assignedTo, "human");
+  assert.equal(thread.messages[0].authorType, "agent");
+  assert.equal(thread.messages[0].authorName, "opencode");
+  assert.equal(thread.messages[0].body, "main should not be empty");
+  assert.equal(thread.messages[0].opencodeSessionID, "ses_test");
+  assert.equal(state.events[0].actorType, "agent");
+});
