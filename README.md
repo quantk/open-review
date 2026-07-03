@@ -95,7 +95,7 @@ npm run check
 Runtime entry:
 
 ```text
-index.js -> src/runtime.ts
+dist/index.js
 ```
 
-The current runtime uses Node's built-in TypeScript stripping. If this is packaged for older Node versions later, compile `src/**/*.ts` to `dist/**/*.js` and update `index.js` to import the built runtime.
+TypeScript source lives in `src/`. The plugin runtime loaded by opencode is built JavaScript in `dist/`, matching the pattern used by published TypeScript opencode plugins. This avoids Node's `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` when the package is installed under `node_modules`.
