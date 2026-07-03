@@ -1156,26 +1156,34 @@ function waitForReady(child) {
 
 // src/plugin/plugin.ts
 var LocalReviewPlugin = async (ctx) => {
-  const gitRoot = await getGitRoot(ctx.worktree || ctx.directory);
-  if (!gitRoot) return {};
-  const serverInput = {
-    projectID: ctx.project?.id || hashText(gitRoot).slice(0, 12),
-    projectName: ctx.project?.name || path3.basename(gitRoot),
-    worktree: gitRoot
-  };
+  let serverInput = null;
   let server = { unavailable: true, error: "Local review server is not running. Use /review-start to start it." };
-  const startReviewServer = async () => {
-    server = await ensureServer(serverInput);
+  const resolveServerInput = async (context) => {
+    if (serverInput) return serverInput;
+    const rootCandidate = context?.worktree || ctx.worktree || context?.directory || ctx.directory;
+    const gitRoot = await getGitRoot(rootCandidate);
+    if (!gitRoot) {
+      throw new Error(`Local review requires a Git worktree. Current directory is not inside Git: ${rootCandidate}`);
+    }
+    serverInput = {
+      projectID: ctx.project?.id || hashText(gitRoot).slice(0, 12),
+      projectName: ctx.project?.name || path3.basename(gitRoot),
+      worktree: gitRoot
+    };
+    return serverInput;
+  };
+  const startReviewServer = async (context) => {
+    server = await ensureServer(await resolveServerInput(context));
     fireAndForgetLog(ctx, `Local review UI: ${server.reviewUrl}`);
     return server;
   };
-  const restartReviewServer = async () => {
-    server = await restartServer(serverInput);
+  const restartReviewServer = async (context) => {
+    server = await restartServer(await resolveServerInput(context));
     fireAndForgetLog(ctx, `Local review UI restarted: ${server.reviewUrl}`);
     return server;
   };
-  const stopReviewServer = async () => {
-    await stopServer(serverInput);
+  const stopReviewServer = async (context) => {
+    await stopServer(await resolveServerInput(context));
     server = { unavailable: true, error: "Local review server is not running. Use /review-start to start it." };
     fireAndForgetLog(ctx, "Local review UI stopped.");
     return { ok: true, message: "Local review UI stopped." };
@@ -1194,31 +1202,31 @@ var LocalReviewPlugin = async (ctx) => {
   return {
     dispose: async () => {
       clearTimeout(refreshTimer);
-      await stopServer(serverInput).catch(() => {
+      if (serverInput) await stopServer(serverInput).catch(() => {
       });
     },
     tool: {
       review_start: tool({
         description: "Start the local review web UI sidecar for the current Git worktree and return the browser URL.",
         args: {},
-        async execute() {
-          const started = await startReviewServer();
+        async execute(_args, context) {
+          const started = await startReviewServer(context);
           return JSON.stringify({ ok: true, url: started.reviewUrl, message: `Open ${started.reviewUrl}` }, null, 2);
         }
       }),
       review_restart: tool({
         description: "Restart the local review web UI sidecar for the current Git worktree and return the new browser URL.",
         args: {},
-        async execute() {
-          const restarted = await restartReviewServer();
+        async execute(_args, context) {
+          const restarted = await restartReviewServer(context);
           return JSON.stringify({ ok: true, url: restarted.reviewUrl, message: `Open ${restarted.reviewUrl}` }, null, 2);
         }
       }),
       review_stop: tool({
         description: "Stop the local review web UI sidecar for the current Git worktree.",
         args: {},
-        async execute() {
-          const stopped = await stopReviewServer();
+        async execute(_args, context) {
+          const stopped = await stopReviewServer(context);
           return JSON.stringify(stopped, null, 2);
         }
       }),
