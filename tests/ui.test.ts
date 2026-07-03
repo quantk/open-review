@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderAppHTML } from "../src/ui/html.ts";
 
 test("renderAppHTML embeds syntactically valid browser script", () => {
-  const html = renderAppHTML("token-test");
+  const html = renderAppHTML();
   const start = html.indexOf("<script>");
   const end = html.lastIndexOf("</script>");
   assert.notEqual(start, -1);
@@ -12,7 +12,7 @@ test("renderAppHTML embeds syntactically valid browser script", () => {
 });
 
 test("renderAppHTML includes Go syntax highlighting rules", () => {
-  const html = renderAppHTML("token-test");
+  const html = renderAppHTML();
   assert.match(html, /go:\s*\[/);
   assert.match(html, /'func'/);
   assert.match(html, /'string'/);
@@ -20,7 +20,13 @@ test("renderAppHTML includes Go syntax highlighting rules", () => {
 });
 
 test("renderAppHTML preserves highlighter regular expressions", () => {
-  const html = renderAppHTML("token-test");
+  const html = renderAppHTML();
   assert.ok(html.includes("const number = /^\\d+(?:\\.\\d+)?/.exec(rest);"));
   assert.ok(html.includes("const ident = /^[A-Za-z_$][\\w$]*/.exec(rest);"));
+});
+
+test("renderAppHTML does not embed bootstrap tokens", () => {
+  const html = renderAppHTML();
+  assert.equal(html.includes("token-test"), false);
+  assert.equal(html.includes("authorization: 'Bearer"), false);
 });

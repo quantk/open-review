@@ -13411,6 +13411,7 @@ async function refreshDiff({ state, storagePath, worktree, projectID, scope, sse
 async function callJSON(server2, route, options) {
   const response = await fetch(`${server2.url}${route}`, {
     method: options.method,
+    signal: options.timeoutMs ? AbortSignal.timeout(options.timeoutMs) : void 0,
     headers: {
       authorization: `Bearer ${server2.token}`,
       "content-type": "application/json"
@@ -13426,7 +13427,7 @@ function assertAuthorized(req, url2, token, port) {
   const origin = req.headers.origin;
   if (origin && ![`http://127.0.0.1:${port}`, `http://localhost:${port}`].includes(origin)) throw httpError(403, "invalid origin");
   const auth = req.headers.authorization || "";
-  const cookieToken = parseCookie(req.headers.cookie || "").review_token;
+  const cookieToken = parseCookie(req.headers.cookie || "")[reviewCookieName(token)];
   const queryToken = url2.searchParams.get("token");
   if (auth === `Bearer ${token}` || cookieToken === token || queryToken === token) return;
   throw httpError(401, "unauthorized");
@@ -13469,10 +13470,13 @@ async function readBody(req) {
 function sendRedirectWithAuthCookie(res, location, token) {
   res.writeHead(303, {
     location,
-    "set-cookie": `review_token=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`,
+    "set-cookie": `${reviewCookieName(token)}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`,
     "cache-control": "no-store"
   });
   res.end();
+}
+function reviewCookieName(token) {
+  return `review_token_${hashText(token).slice(0, 16)}`;
 }
 function matchThreadAction(pathname) {
   const match = /^\/api\/threads\/([^/]+)\/(messages|addressed|resolve|reopen)$/.exec(pathname);
@@ -13500,7 +13504,7 @@ async function ensureServer(input) {
   const existing = await readJSON(lockPath, null);
   if (existing?.url && existing?.token) {
     try {
-      const health = await callJSON(existing, "/api/health", { method: "GET" });
+      const health = await callJSON(existing, "/api/health", { method: "GET", timeoutMs: 1e3 });
       if (health?.ok && health?.worktree === input.worktree) {
         return {
           url: existing.url,
@@ -13573,7 +13577,7 @@ async function stopServer(input) {
   const existing = await readJSON(lockPath, null);
   if (existing?.pid) {
     try {
-      const health = existing?.url && existing?.token ? await callJSON(existing, "/api/health", { method: "GET" }) : null;
+      const health = existing?.url && existing?.token ? await callJSON(existing, "/api/health", { method: "GET", timeoutMs: 1e3 }) : null;
       if (health?.ok && health?.worktree === input.worktree) process.kill(existing.pid, "SIGTERM");
     } catch {
     }

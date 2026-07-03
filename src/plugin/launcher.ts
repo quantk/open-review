@@ -15,7 +15,7 @@ export async function ensureServer(input) {
   const existing = await readJSON(lockPath, null);
   if (existing?.url && existing?.token) {
     try {
-      const health = await callJSON(existing, "/api/health", { method: "GET" });
+      const health = await callJSON(existing, "/api/health", { method: "GET", timeoutMs: 1000 });
       if (health?.ok && health?.worktree === input.worktree) {
         return {
           url: existing.url,
@@ -86,7 +86,7 @@ export async function stopServer(input) {
   const existing = await readJSON(lockPath, null);
   if (existing?.pid) {
     try {
-      const health = existing?.url && existing?.token ? await callJSON(existing, "/api/health", { method: "GET" }) : null;
+      const health = existing?.url && existing?.token ? await callJSON(existing, "/api/health", { method: "GET", timeoutMs: 1000 }) : null;
       if (health?.ok && health?.worktree === input.worktree) process.kill(existing.pid, "SIGTERM");
     } catch {}
   }
