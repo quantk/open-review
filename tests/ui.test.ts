@@ -31,3 +31,11 @@ test("renderAppHTML does not embed bootstrap tokens", () => {
   assert.equal(html.includes("set-cookie"), false);
   assert.equal(html.includes("review_token"), false);
 });
+
+test("renderAppHTML includes collapsible sidebars", () => {
+  const html = renderAppHTML();
+  assert.ok(html.includes('id="toggle-left"'));
+  assert.ok(html.includes('id="toggle-right"'));
+  assert.ok(html.includes("localReviewLeftCollapsed"));
+  assert.ok(html.includes("localReviewRightCollapsed"));
+});

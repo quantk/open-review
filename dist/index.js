@@ -13019,8 +13019,12 @@ function renderAppHTML() {
     button { background:#1b2633; color:var(--text); border:1px solid #2e3b49; border-radius:8px; padding:7px 10px; cursor:pointer; }
     button:hover { border-color:var(--accent); }
     .layout { display:grid; grid-template-columns:260px 1fr 340px; height:calc(100vh - 56px); min-height:0; }
+    .layout.left-collapsed { grid-template-columns:0 1fr 340px; }
+    .layout.right-collapsed { grid-template-columns:260px 1fr 0; }
+    .layout.left-collapsed.right-collapsed { grid-template-columns:0 1fr 0; }
     aside, main { border-right:1px solid var(--line); }
     aside { padding:14px; background:#0d1116; overflow:auto; min-height:0; }
+    .layout.left-collapsed .left-sidebar, .layout.right-collapsed .right-sidebar { padding:0; border:0; overflow:hidden; visibility:hidden; }
     main { overflow:auto; min-height:0; scroll-behavior:smooth; }
     .file { padding:9px 10px; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; cursor:pointer; color:#ccd6e0; }
     .file.active { border-color:var(--accent); background:#111b25; }
@@ -13077,8 +13081,8 @@ function renderAppHTML() {
   </style>
 </head>
 <body>
-  <header><div><strong>OpenCode Local Review</strong> <span id="summary" class="meta"></span></div><div><label class="meta"><input id="show-resolved" type="checkbox"> Show resolved</label> <button id="refresh">Refresh diff</button></div></header>
-  <div class="layout"><aside><h3>Files</h3><div id="files"></div></aside><main id="diff"></main><aside><h3>Threads</h3><div id="threads"></div></aside></div>
+  <header><div><strong>OpenCode Local Review</strong> <span id="summary" class="meta"></span></div><div><button id="toggle-left" aria-controls="files" aria-expanded="true">Hide files</button> <button id="toggle-right" aria-controls="threads" aria-expanded="true">Hide threads</button> <label class="meta"><input id="show-resolved" type="checkbox"> Show resolved</label> <button id="refresh">Refresh diff</button></div></header>
+  <div id="layout" class="layout"><aside class="left-sidebar"><h3>Files</h3><div id="files"></div></aside><main id="diff"></main><aside class="right-sidebar"><h3>Threads</h3><div id="threads"></div></aside></div>
   <script>
     const params = new URLSearchParams(location.search);
     const queryToken = params.get('token');
@@ -13090,6 +13094,8 @@ function renderAppHTML() {
     const token = localStorage.localReviewToken || '';
     let currentDiff = null, currentFile = null, pending = null, replyingThreadID = null;
     let showResolved = localStorage.localReviewShowResolved === '1';
+    let leftCollapsed = localStorage.localReviewLeftCollapsed === '1';
+    let rightCollapsed = localStorage.localReviewRightCollapsed === '1';
     const api = async (path, options={}) => {
       const res = await fetch(path, { ...options, headers: { ...(token ? { authorization: 'Bearer ' + token } : {}), 'content-type': 'application/json', ...(options.headers||{}) }, body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body });
       const data = await res.json().catch(() => ({}));
@@ -13268,6 +13274,8 @@ function renderAppHTML() {
     });
     document.getElementById('show-resolved').checked = showResolved;
     document.getElementById('show-resolved').onchange = (event) => { showResolved = event.target.checked; localStorage.localReviewShowResolved = showResolved ? '1' : '0'; renderDiff(); renderThreads(); };
+    document.getElementById('toggle-left').onclick = () => { leftCollapsed = !leftCollapsed; localStorage.localReviewLeftCollapsed = leftCollapsed ? '1' : '0'; applySidebarState(); };
+    document.getElementById('toggle-right').onclick = () => { rightCollapsed = !rightCollapsed; localStorage.localReviewRightCollapsed = rightCollapsed ? '1' : '0'; applySidebarState(); };
     document.getElementById('refresh').onclick = async () => { await api('/api/diff/refresh',{method:'POST',body:{scope:'working_tree'}}); await load(); };
     try { if (token) { const es = new EventSource('/api/events?token=' + encodeURIComponent(token)); es.onmessage = () => load(); es.addEventListener('diff.changed', load); es.addEventListener('thread.updated', load); es.addEventListener('thread.created', load); } } catch {}
     function prefix(type) { return type === 'add' ? '+' : type === 'del' ? '-' : ' '; }
@@ -13275,6 +13283,18 @@ function renderAppHTML() {
     function domID(value) { return String(value ?? '').replace(/[^A-Za-z0-9_-]/g, '_'); }
     function lineAnchorID(filePath, side, number) { return 'line-'+domID(filePath)+'-'+domID(side)+'-'+domID(number); }
     function threadAnchorID(threadID) { return 'thread-'+domID(threadID); }
+    function applySidebarState() {
+      const layout = document.getElementById('layout');
+      layout.classList.toggle('left-collapsed', leftCollapsed);
+      layout.classList.toggle('right-collapsed', rightCollapsed);
+      const left = document.getElementById('toggle-left');
+      const right = document.getElementById('toggle-right');
+      left.textContent = leftCollapsed ? 'Show files' : 'Hide files';
+      right.textContent = rightCollapsed ? 'Show threads' : 'Hide threads';
+      left.setAttribute('aria-expanded', String(!leftCollapsed));
+      right.setAttribute('aria-expanded', String(!rightCollapsed));
+    }
+    applySidebarState();
     load().catch(err => document.getElementById('diff').innerHTML = '<div class="empty">'+esc(err.message)+'</div>');
   </script>
 </body>
