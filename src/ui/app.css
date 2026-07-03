@@ -22,8 +22,10 @@
   .sidebar { @apply min-h-0 overflow-auto border-r border-line bg-[#0d1116] p-3.5; }
   .layout-grid.left-collapsed .left-sidebar, .layout-grid.right-collapsed .right-sidebar { padding: 0; border: 0; overflow: hidden; visibility: hidden; }
   .diff-pane { @apply min-h-0 overflow-auto border-r border-line scroll-smooth; }
-  .file-card { @apply mb-2 cursor-pointer rounded-[10px] border border-line px-2.5 py-2 text-[#ccd6e0] transition hover:border-accent; }
+  .file-card { @apply mb-2 min-w-0 cursor-pointer overflow-hidden rounded-[10px] border border-line px-2.5 py-2 text-[#ccd6e0] transition hover:border-accent; }
   .file-card.active { @apply border-accent bg-[#111b25]; }
+  .file-name { @apply truncate font-medium text-[#d8e2ec]; }
+  .file-path { @apply mt-0.5 text-[11px] leading-snug text-[#697584]; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .diff-file { @apply border-b border-line; }
   .file-title { @apply sticky top-0 z-10 border-b border-line bg-[#11161c] px-3.5 py-2.5 font-bold; }
   .diff-table { @apply w-full border-collapse font-mono text-xs; }

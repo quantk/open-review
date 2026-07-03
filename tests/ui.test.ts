@@ -45,3 +45,10 @@ test("renderAppHTML mounts compiled React app", () => {
   assert.ok(html.includes('id="root"'));
   assert.ok(APP_SCRIPT.includes("react-tailwind"));
 });
+
+test("renderAppHTML includes resilient file sidebar styles", () => {
+  assert.ok(APP_SCRIPT.includes("file-name"));
+  assert.ok(APP_SCRIPT.includes("file-path"));
+  assert.ok(APP_STYLES.includes("overflow-wrap:anywhere"));
+  assert.ok(APP_STYLES.includes("-webkit-line-clamp:2"));
+});
