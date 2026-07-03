@@ -7,7 +7,7 @@ import { DEFAULT_HOST } from "../constants.ts";
 import { ensureReviewDir, readJSON, writeJSON } from "../core/storage.ts";
 import { callJSON } from "../server/http.ts";
 
-const runtimeFile = fileURLToPath(new URL("../runtime.ts", import.meta.url));
+const runtimeFile = sidecarEntryFile();
 
 export async function ensureServer(input) {
   const reviewDir = await ensureReviewDir(input.worktree);
@@ -97,6 +97,14 @@ function sidecarRuntime() {
   const executable = path.basename(process.execPath).toLowerCase();
   if (executable.includes("opencode")) return "node";
   return process.execPath;
+}
+
+function sidecarEntryFile() {
+  const currentFile = fileURLToPath(import.meta.url);
+  if (currentFile.endsWith(`${path.sep}launcher.ts`)) {
+    return fileURLToPath(new URL("../runtime.ts", import.meta.url));
+  }
+  return currentFile;
 }
 
 function waitForReady(child) {

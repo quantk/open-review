@@ -1,5 +1,4 @@
 node_modules/
 .opencode/review/
 coverage/
-dist/
 *.log

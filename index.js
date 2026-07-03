@@ -1,1 +1,1 @@
-export { default, LocalReviewPlugin } from "./src/runtime.ts";
+export { default, LocalReviewPlugin } from "./dist/index.js";
