@@ -6,6 +6,8 @@ import { hashText } from "../utils.ts";
 import { ensureServer, restartServer, stopServer } from "./launcher.ts";
 
 export const LocalReviewPlugin = async (ctx) => {
+  fireAndForgetLog(ctx, "Local review plugin initialized; registering review_start, review_restart, review_stop, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed tools.");
+
   let serverInput = null;
   let server = { unavailable: true, error: "Local review server is not running. Use /review-start to start it." };
 

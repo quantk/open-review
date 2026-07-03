@@ -6,7 +6,9 @@
   "description": "Local MR-like review loop for opencode agent changes.",
   "main": "./dist/index.js",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "default": "./dist/index.js"
+    }
   },
   "files": [
     "index.js",
