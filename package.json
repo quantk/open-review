@@ -5,11 +5,6 @@
   "type": "module",
   "description": "Local MR-like review loop for opencode agent changes.",
   "main": "./dist/index.js",
-  "exports": {
-    ".": {
-      "default": "./dist/index.js"
-    }
-  },
   "files": [
     "index.js",
     "dist",
@@ -23,11 +18,12 @@
     "smoke": "node src/runtime.ts --local-review-server",
     "test": "node --test tests/*.test.ts"
   },
-  "dependencies": {
-    "@opencode-ai/plugin": "1.14.30"
-  },
   "devDependencies": {
+    "@opencode-ai/plugin": "1.14.30",
     "esbuild": "^0.27.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
   },
   "repository": {
     "type": "git",

@@ -11,4 +11,4 @@ if (process.argv.includes("--local-review-server")) {
 export { LocalReviewPlugin };
 export { LocalReviewPlugin as OpenReviewPlugin };
 export const server = LocalReviewPlugin;
-export default { server: LocalReviewPlugin };
+export default LocalReviewPlugin;
