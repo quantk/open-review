@@ -13633,6 +13633,11 @@ var LocalReviewPlugin = async (ctx) => {
       if (serverInput) await stopServer(serverInput).catch(() => {
       });
     },
+    "experimental.chat.system.transform": async (_input, output) => {
+      output.system.push(
+        "OpenReview plugin is loaded. Available OpenReview tool names should be: review_start, review_restart, review_stop, review_list_open_threads, review_get_thread, review_reply, review_mark_addressed. If these tools are not callable, plugin tool registration is being filtered by opencode configuration or runtime."
+      );
+    },
     tool: {
       review_start: tool({
         description: "Start the local review web UI sidecar for the current Git worktree and return the browser URL.",
